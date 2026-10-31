@@ -1,0 +1,61 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Repository {
+  id             String   @id @default(cuid())
+  name           String
+  githubUrl      String
+  branch         String   @default("main")
+  localPath      String?
+  graphPath      String?
+  indexingStatus String   @default("idle") // idle, validating, cloning, indexing, processing, ready, error
+  language       String?
+  error          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  conversations Conversation[]
+  indexingJobs  IndexingJob[]
+}
+
+model Conversation {
+  id             String   @id @default(cuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  title          String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  messages Message[]
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String   // user, assistant
+  content        String
+  citations      String?  // JSON array of file references
+  imageUrl       String?
+  createdAt      DateTime @default(now())
+}
+
+model IndexingJob {
+  id             String   @id @default(cuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  status         String   @default("pending") // pending, running, completed, failed
+  progress       Int      @default(0)
+  error          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
