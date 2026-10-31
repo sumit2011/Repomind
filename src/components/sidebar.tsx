@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import { 
   Plus, 
   Link, 
@@ -23,21 +22,43 @@ interface Repository {
   indexingStatus: string;
 }
 
-export function Sidebar() {
+interface Conversation {
+  id: string;
+  title: string;
+  repository: {
+    id: string;
+    name: string;
+  };
+}
+
+interface SidebarProps {
+  selectedRepositoryId?: string;
+  onRepositorySelect?: (id: string) => void;
+}
+
+export function Sidebar({ selectedRepositoryId, onRepositorySelect }: SidebarProps) {
   const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchRepositories();
+    fetchData();
   }, []);
 
-  const fetchRepositories = async () => {
+  const fetchData = async () => {
     try {
-      const response = await fetch('/api/repositories');
-      const data = await response.json();
-      setRepositories(data.repositories || []);
+      const [reposRes, convsRes] = await Promise.all([
+        fetch('/api/repositories'),
+        fetch('/api/conversations')
+      ]);
+      
+      const reposData = await reposRes.json();
+      const convsData = await convsRes.json();
+      
+      setRepositories(reposData.repositories || []);
+      setConversations(convsData.conversations || []);
     } catch (error) {
-      console.error('Failed to fetch repositories:', error);
+      console.error('Failed to fetch data:', error);
     } finally {
       setLoading(false);
     }
@@ -90,8 +111,9 @@ export function Sidebar() {
                 {repositories.map((repo) => (
                   <Button
                     key={repo.id}
-                    variant="ghost"
+                    variant={selectedRepositoryId === repo.id ? "secondary" : "ghost"}
                     className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    onClick={() => onRepositorySelect?.(repo.id)}
                   >
                     <Link className="mr-2 h-4 w-4" />
                     <div className="flex flex-1 items-center justify-between">
@@ -108,10 +130,25 @@ export function Sidebar() {
 
           <div className="space-y-1">
             <p className="px-2 text-xs font-medium text-muted-foreground">Recent Conversations</p>
-            <Button variant="ghost" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-              <MessageSquare className="mr-2 h-4 w-4" />
-              No conversations
-            </Button>
+            {conversations.length === 0 ? (
+              <Button variant="ghost" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                <MessageSquare className="mr-2 h-4 w-4" />
+                No conversations
+              </Button>
+            ) : (
+              <div className="space-y-1">
+                {conversations.slice(0, 5).map((conv) => (
+                  <Button
+                    key={conv.id}
+                    variant="ghost"
+                    className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sm"
+                  >
+                    <MessageSquare className="mr-2 h-4 w-4" />
+                    <span className="truncate">{conv.title}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
 
           <Separator className="my-4 bg-sidebar-border" />
