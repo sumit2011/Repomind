@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { chatWithGemma, isGeminiConfigured } from '@/lib/gemini';
+import { buildGraphContext } from '@/lib/graphify';
+import fs from 'fs/promises';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { repositoryId, conversationId, query, imageUrl } = body;
 
-    if (!query) {
-      return NextResponse.json(
-        { error: 'Query is required' },
-        { status: 400 }
-      );
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    // Check if Gemini is configured
     if (!isGeminiConfigured()) {
       return NextResponse.json(
         { error: 'AI not configured. Please set GEMINI_API_KEY.' },
@@ -22,23 +20,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get or create conversation
     let conversation;
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
-        include: { messages: { orderBy: { createdAt: 'asc' } } }
+        include: { messages: { orderBy: { createdAt: 'asc' } } },
       });
     }
 
     if (!conversation && repositoryId) {
-      // Create new conversation
       conversation = await prisma.conversation.create({
         data: {
           repositoryId,
-          title: query.slice(0, 50) + (query.length > 50 ? '...' : '')
+          title: query.trim().slice(0, 60) + (query.trim().length > 60 ? '...' : ''),
         },
-        include: { messages: { orderBy: { createdAt: 'asc' } } }
+        include: { messages: { orderBy: { createdAt: 'asc' } } },
       });
     }
 
@@ -49,48 +45,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save user message
     await prisma.message.create({
       data: {
         conversationId: conversation.id,
         role: 'user',
         content: query,
-        imageUrl
-      }
+        imageUrl: imageUrl || null,
+      },
     });
 
-    // Build message history for AI
-    const messageHistory = conversation.messages.map((msg: any) => ({
-      role: msg.role as 'user' | 'model',
-      content: msg.content
+    const messageHistory: Array<{ role: 'user' | 'model'; content: string }> = conversation.messages.map((msg: { role: string; content: string }) => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      content: msg.content,
     }));
 
-    // Add current query
     messageHistory.push({ role: 'user', content: query });
 
-    // Get repository context (placeholder - will implement graph retrieval in Phase 3)
-    let context = '';
-    if (conversation.repositoryId) {
-      const repository = await prisma.repository.findUnique({
-        where: { id: conversation.repositoryId }
-      });
-      
-      if (repository && repository.indexingStatus === 'ready') {
-        context = `Repository: ${repository.name}\nGitHub URL: ${repository.githubUrl}\nBranch: ${repository.branch}\n\nNote: Graph-based context retrieval will be implemented in Phase 3. Currently using basic repository metadata.`;
+    let context = `Repository metadata:\n- Repository ID: ${repositoryId || conversation.repositoryId}\n`;
+    let citations: string[] = [];
+
+    const repository = await prisma.repository.findUnique({
+      where: { id: conversation.repositoryId },
+    });
+
+    if (repository) {
+      context += `- Name: ${repository.name}\n- GitHub URL: ${repository.githubUrl}\n- Branch: ${repository.branch}\n- Status: ${repository.indexingStatus}\n`;
+
+      if (repository.graphPath) {
+        try {
+          const graphRaw = await fs.readFile(repository.graphPath, 'utf-8');
+          const graph = JSON.parse(graphRaw);
+          const graphContext = buildGraphContext(graph, query);
+          context += `${graphContext.context}\n`;
+          citations = graphContext.citations;
+        } catch (error) {
+          console.warn('Could not read repository graph:', error);
+        }
       }
     }
 
-    // Get AI response
-    const aiResponse = await chatWithGemma(messageHistory, context);
+    if (imageUrl) {
+      context += `\nUploaded image reference: ${imageUrl}\nUse the image as additional context for architecture or debugging questions.`;
+    }
 
-    // Save AI response
+    const aiResponse = await chatWithGemma(messageHistory, context, citations);
+
     const savedMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
         role: 'assistant',
         content: aiResponse.content,
-        citations: JSON.stringify(aiResponse.citations || [])
-      }
+        citations: JSON.stringify(aiResponse.citations || []),
+      },
     });
 
     return NextResponse.json({
@@ -98,11 +104,10 @@ export async function POST(request: NextRequest) {
         id: savedMessage.id,
         role: 'assistant',
         content: aiResponse.content,
-        citations: aiResponse.citations
+        citations: aiResponse.citations,
       },
-      conversationId: conversation.id
+      conversationId: conversation.id,
     });
-
   } catch (error) {
     console.error('Chat error:', error);
     return NextResponse.json(

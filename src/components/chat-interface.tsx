@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ComponentPropsWithoutRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -73,7 +73,7 @@ export function ChatInterface({ repositoryId }: ChatInterfaceProps) {
           content: `Error: ${data.error}`
         }]);
       }
-    } catch (error) {
+    } catch {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
@@ -123,19 +123,19 @@ export function ChatInterface({ repositoryId }: ChatInterfaceProps) {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        code: ({ node, inline, className, children, ...props }: any) => (
+                        code: ({ inline, className, children, ...props }: ComponentPropsWithoutRef<'code'> & { inline?: boolean }) => (
                           <code
                             className={`${
                               inline
                                 ? 'bg-muted px-1 py-0.5 rounded text-sm'
                                 : 'block bg-muted p-3 rounded-lg text-sm overflow-x-auto'
-                            }`}
+                            } ${className ?? ''}`}
                             {...props}
                           >
                             {children}
                           </code>
                         ),
-                        a: ({ node, children, ...props }: any) => (
+                        a: ({ children, ...props }: ComponentPropsWithoutRef<'a'>) => (
                           <a
                             className="text-primary hover:underline"
                             target="_blank"

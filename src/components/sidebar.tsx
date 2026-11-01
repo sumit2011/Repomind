@@ -41,10 +41,6 @@ export function Sidebar({ selectedRepositoryId, onRepositorySelect }: SidebarPro
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   const fetchData = async () => {
     try {
       const [reposRes, convsRes] = await Promise.all([
@@ -63,6 +59,12 @@ export function Sidebar({ selectedRepositoryId, onRepositorySelect }: SidebarPro
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    void (async () => {
+      await fetchData();
+    })();
+  }, []);
 
   const getStatusColor = (status: string) => {
     switch (status) {

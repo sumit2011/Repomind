@@ -37,7 +37,7 @@ export function TopNav() {
         setStatus('error');
         setMessage(data.error || 'Failed to connect repository');
       }
-    } catch (error) {
+    } catch {
       setStatus('error');
       setMessage('Network error');
     } finally {
